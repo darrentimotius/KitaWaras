@@ -3,6 +3,8 @@ import joblib
 import os
 import pandas as pd
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 # load model
 model = joblib.load("stress_prediction.pkl")
@@ -55,6 +57,27 @@ def save_data(data_input):
         data_input.to_csv(file_path, index=False)
     else:
         data_input.to_csv(file_path, mode="a", header=False, index=False)
+
+@st.cache_resource
+def get_gsheet_client():
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+
+    return gspread.authorize(creds)
+
+def save_to_gsheet(dataframe, sheet_name):
+    client = get_gsheet_client()
+    spreadsheet = client.open("Kita Waras Responses")
+    sheet = spreadsheet.worksheet(sheet_name)
+
+    sheet.append_row(dataframe.values.tolist()[0])
 
 st.set_page_config(page_title="Kita Waras", layout="wide")
 
@@ -178,7 +201,8 @@ def clicked():
     numeric_data.insert(0, "age", age_ans)
     numeric_data.insert(0, "name", name_ans)
     numeric_data.insert(0, "timestamp", timestamp)
-    save_numeric(numeric_data, pred)
+    numeric_data["predicted_stress"] = pred
+    save_to_gsheet(numeric_data, "Numeric")
 
     st.subheader("Hasil Prediksi")
     st.write(f"Jenis stres apa yang paling sering kamu rasakan : ")
@@ -196,7 +220,10 @@ def clicked():
 
     data_input['predicted_stress'] = output
     data_input.insert(0, "timestamp", timestamp)
-    save_data(data_input)
+    save_to_gsheet(data_input, "Responses")
 
 if (is_clicked) :
     clicked()
+
+st.divider()
+st.caption("Hasil ini bukan diagnosis medis. Jika kamu merasa sangat terganggu atau mengalami distress berat, pertimbangkan untuk berkonsultasi dengan profesional kesehatan mental.")
